@@ -72,17 +72,23 @@ def extract_frames( fname, bnd ):
     fh = open( fname, 'r' )
     bnd_arr = numpy.loadtxt( bnd )
     nx, ny = bnd_arr.shape
+    bnd_arr = bnd_arr.ravel()
     # save files in a special folder
     part = fname.rpartition( '/' )
     cell_name = part[-1]
-    savedir = part[0] + '/' + 'frames/'
+    # find the subfolder name from the beginning of the cell
+    # name. subfolder must have been created already.
+    subfolder = cell_name.partition( '-' )[0]
+    savedir = part[0] + '/' + 'frames/' + subfolder +'/'
 
     print 'savedir', savedir
      
-    # loop over lines in <fname> and save each a nx x ny array
+    # loop over lines in <fname> and save each as nx x ny array
     #k = 0
     for k, line in enumerate( fh.readlines() ):
         arr = numpy.fromstring( line, sep='\t' )
+        # remove boundary
+        arr = bnd_arr * arr
         arr.resize( (nx,ny) )
         numpy.save( savedir + cell_name + '_' + str(k), arr )
 
@@ -251,7 +257,7 @@ def dir_hash( dlist ):
     """
     """
     files= {}
-    for filename in dlist: #os.listdir("C:\\TEMP\\py"):
+    for filename in dlist: 
         basename, extension = filename.split('.')
         # filename: new/old, prefix==id, frame number, threshold value
         celltype, prefix, frame, thresh = basename.split('_')
@@ -261,18 +267,25 @@ def dir_hash( dlist ):
 
 if __name__ == "__main__":
 
-    #fdir = '/data/jberwald/wyss/data/Cells_Jesse/New/frames/'
-    fdir = '/data/jberwald/wyss/data/Cells_Jesse/Old/frames/'
+    fdir = '/data/jberwald/wyss/data/Cells_Jesse/New/frames/new_40125/'
+    #fdir = '/data/jberwald/wyss/data/Cells_Jesse/Old/frames/old_120125/'
 
-    # str_values = [ '09', '10', '12'] #[ '03' , '05', '07' ]
-    # for sval in str_values:
-    #     thresh2cub( fdir, sval )
-        
-    values =  [ '09', '10', '12', '03' , '05', '07' ]# [ 0.3, 0.5, 0.7, 0.9, 1.0, 1.2 ] #[ 0.3, 0.5, 0.7,
-    # #values = [ '09', '10', '12']
+    # split a giant cell file containing 5000 frames into individual files. 
+    cell_name = '/data/jberwald/wyss/data/Cells_Jesse/New/new_40125-concatenated-ASCII'
+    bnd_name = '/data/jberwald/wyss/data/Cells_Jesse/New/boundary_Nov_new40125'
+    extract_frames( cell_name, bnd_name )
+
+    values =  [ 1.0 ] #[ '09', '10', '12', '03' , '05', '07' ]
     for val in values:
-        #threshold_all( fdir, pct=val )
-        #thresh2cub( fdir, val )
-        run_chomp( fdir, val )
+        threshold_all( fdir, pct=val )
+        #run_chomp( fdir, val )
+    
+    str_values = [ '1.0' ] 
+    for sval in str_values:
+        thresh2cub( fdir, sval )
+        
+    
+    # #values = [ '09', '10', '12']
+ 
 
 #    rename_cub_files( fdir )
