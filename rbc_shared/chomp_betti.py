@@ -13,7 +13,6 @@ except ImportError:
     print "Python Image Library not installed"
     raise
 
-
 slash = '/'
 
 def run_chomp( fname, savename ):

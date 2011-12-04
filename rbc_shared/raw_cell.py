@@ -1,7 +1,7 @@
 import numpy
 from matplotlib import pyplot as plt
 import os, shutil
-#from jjb.chomp import chomp_betti as cb
+from jjb.chomp import chomp_betti
 
 def plot_raw_cell( fname, **args ):
     """
@@ -139,7 +139,7 @@ def threshold_frame( arr, pct ):
     ma = numpy.ma.masked_less_equal( arr, 0 )
     return numpy.ma.masked_less_equal( arr, pct*ma.mean() )
 
-def threshold_all( fdir, pct=1.0 ):
+def threshold_all( fdir, pct ):
     """
     Threshold all RBC images in directory <fdir>. The originals are
     stored in NPY files. Save the thresholded arrays at them as
@@ -149,7 +149,10 @@ def threshold_all( fdir, pct=1.0 ):
     dlist = [ f for f in dlist if f.endswith('npy') and 'thresh' not in f ]
     for f in dlist:
         arr = numpy.load( fdir + f )
-        thresh = threshold_frame( arr, pct )
+        #thresh = threshold_frame( arr, pct )
+        # mask the array as a percent of the mean (excluding al zeros first)
+        thresh = numpy.ma.masked_less_equal( arr, 0 )
+        thresh = numpy.ma.masked_less_equal( arr, pct*thresh.mean() )
         numpy.save( fdir + f[:-4] +'_thresh'+str(pct)+'.npy', thresh.mask )
 
 def thresh2cub( fdir, value ):
@@ -164,7 +167,14 @@ def thresh2cub( fdir, value ):
     for f in dlist:
         savename = fdir + f[:-3] + 'cub'
         arr = numpy.load( fdir + f )
-        bool2cub( arr, savename )
+        c = arr.astype( 'uint' )
+        w = numpy.where( c==0 )
+        # zip locations of thresholded values to get coords (2D)
+        z = zip( w[0], w[1] )
+        coords = [ str(x)+'\n' for x in z ]
+        with open( savename, 'w' ) as fh:
+            fh.writelines( coords )
+            #bool2cub( arr, savename )
         
 def bool2cub( arr, savename ):
     """
@@ -191,24 +201,27 @@ def run_chomp( fdir, value ):
     dlist = [ f for f in dlist if f.endswith('cub') and thresh in f ]
     for f in dlist:
         savename = fdir + 'chomp/' + f[:-4] 
-        cb.run_chomp( fdir + f, savename+'.cbetti' )
-        cb.extract_betti( savename )
+        chomp_betti.run_chomp( fdir + f, savename+'.cbetti' )
+        chomp_betti.extract_betti( savename )
 
-def rename_cub_files( fdir ):
+def rename_cub_files( fdir, val ):
     """
     chomp cannot deal with two "dots" in a file name. 
     """
     dlist = os.listdir( fdir )
-    dlist = [ f for f in dlist if f.endswith('cub') ]
+    ending = str( val ) + 'cub'
+    dlist = [ f for f in dlist if f.endswith( ending ) ]
     newlist = []
     for f in dlist:
-        part = f.partition( '.' )
-        newf = part[0] + part[-1]
+        #part = f.partition( '.' )
+        #newf = part[0] + part[-1]
+        x = f.rstrip('cub')
+        newf = x + '.cub'
         shutil.move( fdir + f, fdir + newf )
     
 
 def plot_betti( barr, cell=1, savedir=None, dim=0, fig=None,
-               total_cells=2, color='b', showplot=False ):
+               total_cells=2, color='b', showplot=False, **args ):
     """
     Plot betti numbers for each frame for a cell. Obtain a time series
     (time=frame number)
@@ -217,8 +230,9 @@ def plot_betti( barr, cell=1, savedir=None, dim=0, fig=None,
         fig = plt.figure()
     ax = fig.gca()
     #ax = fig.add_subplot(total_cells, 1, cell_num+1)
+    
     data = barr[:,dim,:]
-    ax.plot( data[1], 'o-', color=color, lw=1.5, ms=2 )
+    ax.plot( data[1], '-', color=color, lw=1., **args )
     # record title and some stats
     ax.set_title(  'Betti numbers for cell '+str(cell)+\
                  ' (mean='+str( round(data[1].mean()) )+')' )
@@ -232,12 +246,14 @@ def plot_betti( barr, cell=1, savedir=None, dim=0, fig=None,
     if showplot:
         fig.show()
 
-def read_betti_dir( fdir ):
+def read_betti_dir( fdir, val ):
     """
     Read all .betti files in a directory and organize them for analysis.
     """
     dlist = os.listdir( fdir )
-    betti_list = [ f for f in dlist if f.endswith( '.betti' ) ]
+    # focus on one threshold value
+    ending = str( val ) + '.betti'
+    betti_list = [ f for f in dlist if f.endswith( ending ) ]
 
     betti_dict = dir_hash( betti_list )
     frames = betti_dict.keys()
@@ -267,22 +283,90 @@ def dir_hash( dlist ):
 
 if __name__ == "__main__":
 
-    fdir = '/data/jberwald/wyss/data/Cells_Jesse/New/frames/new_40125/'
-    #fdir = '/data/jberwald/wyss/data/Cells_Jesse/Old/frames/old_120125/'
+    have_pp = False
+    try:
+        import pp
+        have_pp = True
+    except ImportError:
+        print "Could not import pp. Will proceed the serial way..."
 
+    new_fdir = '/data/jberwald/wyss/data/Cells_Jesse/New/frames/'
+    old_fdir = '/data/jberwald/wyss/data/Cells_Jesse/Old/frames/'
+
+    new_dirs = [ 'new_110125/', 'new_130125/', 'new_140125/', 'new_40125/', 'new_50125/' ]
+    old_dirs = [ 'old_100125/', 'old_120125/', 'old_50125/', 'old_90125/' ]
+
+    sval = '125'
+
+    # read all betti files from all experiments
+    new_arrs = {}
+    old_arrs = {}
+    for cell in new_dirs:
+        betti_files = new_fdir + cell + 'chomp/'
+        new_arrs[ betti_files ] = read_betti_dir( betti_files, sval )
+        #new_arrs.append( read_betti_dir( betti_files ) )
+    for cell in old_dirs:
+        betti_files = old_fdir + cell + 'chomp/'
+        old_arrs[ betti_files ] = read_betti_dir( betti_files, sval )
+        #old_arrs.append( read_betti_dir( betti_files ) )
+    
     # split a giant cell file containing 5000 frames into individual files. 
-    cell_name = '/data/jberwald/wyss/data/Cells_Jesse/New/new_40125-concatenated-ASCII'
-    bnd_name = '/data/jberwald/wyss/data/Cells_Jesse/New/boundary_Nov_new40125'
-    extract_frames( cell_name, bnd_name )
+    # cell_name = '/data/jberwald/wyss/data/Cells_Jesse/Old/old_50125-concatenated-ASCII'
+    # bnd_name = '/data/jberwald/wyss/data/Cells_Jesse/Old/boundary_Nov_old50125'
+    # extract_frames( cell_name, bnd_name )
 
     values =  [ 1.0 ] #[ '09', '10', '12', '03' , '05', '07' ]
-    for val in values:
-        threshold_all( fdir, pct=val )
-        #run_chomp( fdir, val )
+#    for val in values:
+    val = '10'
+ 
+    what_to_run = 'chomp'
+
+    # set proper directories depending on cells (old? new?)
+    fdir = old_fdir
+    cell_dirs = old_dirs
+    # run stuff in parallel on all available processors
+    # if have_pp:
+    #     # create a pool of workers. Default is to use all cpu's
+    #     pool = pp.Server()
+    #     jobs = []
+    #     depmods = ( 'shutil', 'chomp_betti', 'numpy', 'os' )
+    #     # distribute jobs to the pool of workers
+    #     for cell in cell_dirs:
+    #         cub_files = fdir + cell
+    #         if what_to_run=='threshold':
+    #             print "thresholding... "
+    #             print cub_files
+    #             jobs.append( pool.submit( threshold_all,
+    #                                       args=( cub_files, val ),
+    #                                       modules=depmods ) )
+    #         elif what_to_run=='2cub':
+    #             print "converting to cubes... "
+    #             print cub_files
+    #             jobs.append( pool.submit( thresh2cub,
+    #                                       args=( cub_files, val ),
+    #                                       modules=depmods ) )
+    #         elif what_to_run=='chomp':
+    #             print "chomping..."
+    #             print cub_files
+    #             #rename_cub_files( cub_files, val )
+    #             jobs.append( pool.submit( run_chomp,
+    #                                       args=( cub_files, sval ),
+    #                                       modules=depmods ) )
+    #         else:
+    #             print "What are we running? Unrecognized:", what_to_run
+    #     pool.wait()
+    #     pool.print_stats()
+    #     pool.destroy()
+
+    # else:
+    # for cell in cell_dirs:
+    #     threshold_all( fdir, pct=val )
+    #     cub_files = fdir + cell
+    #     #run_chomp( cub_files, val )
     
-    str_values = [ '1.0' ] 
-    for sval in str_values:
-        thresh2cub( fdir, sval )
+    # str_values = [ '1.0' ]
+    # for c in cell_dirs:
+    #     thresh2cub( fdir, sval )
         
     
     # #values = [ '09', '10', '12']
