@@ -20,3 +20,15 @@ rbc_shared/raw_cell.pyc
 rbc_shared/raw_cell.pyc
 
 rbc_shared/raw_cell.pyc
+
+rbc_shared/testarr.npy
+
+rbc_shared/fft_image.pyc
+
+*.pyc
+
+*.pkl
+
+rbc_shared/raw_cell.pyc
+
+rbc_shared/raw_cell.pyc
