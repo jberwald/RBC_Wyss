@@ -1,7 +1,11 @@
 import numpy
 from matplotlib import pyplot as plt
 import os, shutil
-from jjb.chomp import chomp_betti
+try:
+    from jjb.chomp import chomp_betti
+except ImportError:
+    # use the local copy
+    import chomp_betti
 
 def plot_raw_cell( fname, **args ):
     """
@@ -69,6 +73,11 @@ def extract_frames( fname, bnd ):
     Each line of fname contains a raveled matrix. Read each line,
     reshape it based on array stored in <bnd> file. Save to file.
     """
+    if os.uname()[0] == 'Linux':
+        savefunc = numpy.save
+    elif os.uname()[0] == 'Darwin':
+        # why the !@$# doesn't Mac save readable .npy files??
+        savefunc = numpy.savetxt
     fh = open( fname, 'r' )
     bnd_arr = numpy.loadtxt( bnd )
     nx, ny = bnd_arr.shape
@@ -84,13 +93,15 @@ def extract_frames( fname, bnd ):
     print 'savedir', savedir
      
     # loop over lines in <fname> and save each as nx x ny array
-    #k = 0
+    #k = 0. 
+    fromstring = numpy.fromstring
     for k, line in enumerate( fh.readlines() ):
-        arr = numpy.fromstring( line, sep='\t' )
+        arr = fromstring( line, sep='\t' )
         # remove boundary
         arr = bnd_arr * arr
         arr.resize( (nx,ny) )
-        numpy.save( savedir + cell_name + '_' + str(k), arr )
+        #numpy.save( savedir + cell_name + '_' + str(k), arr )
+        savefunc( savedir + cell_name + '_' + str(k), arr )
 
 def frames2png( fdir ):
     """
@@ -213,10 +224,10 @@ def rename_cub_files( fdir, val ):
     dlist = [ f for f in dlist if f.endswith( ending ) ]
     newlist = []
     for f in dlist:
-        #part = f.partition( '.' )
-        #newf = part[0] + part[-1]
-        x = f.rstrip('cub')
-        newf = x + '.cub'
+        part = f.partition( '.' )
+        newf = part[0] + part[-1]
+        # x = f.rstrip('cub')
+        #newf = x + '.cub'
         shutil.move( fdir + f, fdir + newf )
     
 
@@ -299,15 +310,15 @@ if __name__ == "__main__":
     sval = '125'
 
     # read all betti files from all experiments
-    new_arrs = {}
-    old_arrs = {}
-    for cell in new_dirs:
-        betti_files = new_fdir + cell + 'chomp/'
-        new_arrs[ betti_files ] = read_betti_dir( betti_files, sval )
-        #new_arrs.append( read_betti_dir( betti_files ) )
-    for cell in old_dirs:
-        betti_files = old_fdir + cell + 'chomp/'
-        old_arrs[ betti_files ] = read_betti_dir( betti_files, sval )
+    # new_arrs = {}
+    # old_arrs = {}
+    # for cell in new_dirs:
+    #     betti_files = new_fdir + cell + 'chomp/'
+    #     new_arrs[ betti_files ] = read_betti_dir( betti_files, sval )
+    #     #new_arrs.append( read_betti_dir( betti_files ) )
+    # for cell in old_dirs:
+    #     betti_files = old_fdir + cell + 'chomp/'
+    #     old_arrs[ betti_files ] = read_betti_dir( betti_files, sval )
         #old_arrs.append( read_betti_dir( betti_files ) )
     
     # split a giant cell file containing 5000 frames into individual files. 
@@ -315,48 +326,47 @@ if __name__ == "__main__":
     # bnd_name = '/data/jberwald/wyss/data/Cells_Jesse/Old/boundary_Nov_old50125'
     # extract_frames( cell_name, bnd_name )
 
-    values =  [ 1.0 ] #[ '09', '10', '12', '03' , '05', '07' ]
-#    for val in values:
-    val = '10'
- 
-    what_to_run = 'chomp'
+    val =0.75
+    sval = '075'
+    #what_to_run = 'chomp'
 
     # set proper directories depending on cells (old? new?)
     fdir = old_fdir
     cell_dirs = old_dirs
     # run stuff in parallel on all available processors
-    # if have_pp:
-    #     # create a pool of workers. Default is to use all cpu's
-    #     pool = pp.Server()
-    #     jobs = []
-    #     depmods = ( 'shutil', 'chomp_betti', 'numpy', 'os' )
-    #     # distribute jobs to the pool of workers
-    #     for cell in cell_dirs:
-    #         cub_files = fdir + cell
-    #         if what_to_run=='threshold':
-    #             print "thresholding... "
-    #             print cub_files
-    #             jobs.append( pool.submit( threshold_all,
-    #                                       args=( cub_files, val ),
-    #                                       modules=depmods ) )
-    #         elif what_to_run=='2cub':
-    #             print "converting to cubes... "
-    #             print cub_files
-    #             jobs.append( pool.submit( thresh2cub,
-    #                                       args=( cub_files, val ),
-    #                                       modules=depmods ) )
-    #         elif what_to_run=='chomp':
-    #             print "chomping..."
-    #             print cub_files
-    #             #rename_cub_files( cub_files, val )
-    #             jobs.append( pool.submit( run_chomp,
-    #                                       args=( cub_files, sval ),
-    #                                       modules=depmods ) )
-    #         else:
-    #             print "What are we running? Unrecognized:", what_to_run
-    #     pool.wait()
-    #     pool.print_stats()
-    #     pool.destroy()
+    if have_pp:
+        # create a pool of workers. Default is to use all cpu's
+        pool = pp.Server()
+        jobs = []
+        depmods = ( 'shutil', 'chomp_betti', 'numpy', 'os' )
+        # distribute jobs to the pool of workers
+        for task in [ '2cub', 'chomp' ]:
+            for cell in cell_dirs:
+                cub_files = fdir + cell
+                if task=='threshold':
+                    print "thresholding... "
+                    print cub_files
+                    jobs.append( pool.submit( threshold_all,
+                                              args=( cub_files, val ),
+                                              modules=depmods ) )
+                elif task=='2cub':
+                    print "converting to cubes... "
+                    print cub_files
+                    jobs.append( pool.submit( thresh2cub,
+                                              args=( cub_files, val ),
+                                              modules=depmods ) )
+                elif task=='chomp':
+                    print "chomping..."
+                    print cub_files
+                    rename_cub_files( cub_files, val )
+                    jobs.append( pool.submit( run_chomp,
+                                              args=( cub_files, sval ),
+                                              modules=depmods ) )
+                else:
+                    print "What are we running? Unrecognized task:", task
+            pool.wait()
+        pool.print_stats()
+        pool.destroy()
 
     # else:
     # for cell in cell_dirs:

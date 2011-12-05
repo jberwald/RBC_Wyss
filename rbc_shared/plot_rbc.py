@@ -30,10 +30,10 @@ def find_means( betti_arrs, dim=0 ):
     return means
 
 # dimension to analyze
-dim = 0
+dim = 1
 
-new_cells = 'new_betti_thresh1.0.pkl'
-old_cells = 'old_betti_thresh1.0.pkl'
+new_cells = 'new_betti_thresh1.25.pkl'
+old_cells = 'old_betti_thresh1.25.pkl'
 
 new_betti = read_cell_betti_numbers( new_cells )
 old_betti = read_cell_betti_numbers( old_cells )
