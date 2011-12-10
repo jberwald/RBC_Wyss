@@ -149,13 +149,13 @@ def stack_images( path, num_frames=50 ):
 def extract_betti( fname ):
     """
     Read the betti numbers from the file containing the output from chomp.
+    
           .cbetti files hold the complete output from the chomp program
           .betti files hold the truncated output as produced in 
     """
     # open and read chomp-produced data file
     with open( fname + '.cbetti', 'r' ) as fh:
         lines = fh.readlines()
-
     # grab the line with the Betti numbers
     for line in lines:
         if line.startswith( 'Betti' ):

@@ -170,7 +170,8 @@ def thresh2cub( fdir, value ):
     """
     Convert thresholded image matrices to Chomp CUB format.
     
-    Calls bool2cub since thresholded matrices are stored as bools.
+    <defunct> Calls bool2cub since thresholded matrices are stored as bools.
+    Changed this since parallel python had trouble passing dependent function bool2cub()
     """
     dlist = os.listdir( fdir )
     thresh = 'thresh'+str(value)
@@ -179,6 +180,7 @@ def thresh2cub( fdir, value ):
         savename = fdir + f[:-3] + 'cub'
         arr = numpy.load( fdir + f )
         c = arr.astype( 'uint' )
+        # where the masked matrix is False (==0)
         w = numpy.where( c==0 )
         # zip locations of thresholded values to get coords (2D)
         z = zip( w[0], w[1] )
@@ -217,7 +219,7 @@ def run_chomp( fdir, value ):
 
 def rename_cub_files( fdir, val ):
     """
-    chomp cannot deal with two "dots" in a file name. 
+    chomp cannot deal with two 'dots' in a file name. 
     """
     dlist = os.listdir( fdir )
     ending = str( val ) + 'cub'
@@ -259,7 +261,7 @@ def plot_betti( barr, cell=1, savedir=None, dim=0, fig=None,
 
 def read_betti_dir( fdir, val ):
     """
-    Read all .betti files in a directory and organize them for analysis.
+    Read all .betti files in a directory and sort them for time series analysis.
     """
     dlist = os.listdir( fdir )
     # focus on one threshold value
@@ -291,6 +293,18 @@ def dir_hash( dlist ):
         files[ int( frame ) ] = filename
     return files
 
+def fft_filter( fdir, bnd, modes ):
+    """
+    Call fft_image.run_fft_filter()
+
+    fdir : directory containing image frames
+
+    bnd : path to boundary file
+
+    modes : percentage of Fourier modes to use for low pass filter (0,1)
+    """
+    fft_image.run_fft_filter( fdir, bnd, modes )
+
 
 if __name__ == "__main__":
 
@@ -303,9 +317,13 @@ if __name__ == "__main__":
 
     new_fdir = '/data/jberwald/wyss/data/Cells_Jesse/New/frames/'
     old_fdir = '/data/jberwald/wyss/data/Cells_Jesse/Old/frames/'
+    new_cells = [ 'new_110125/', 'new_130125/', 'new_140125/', 'new_40125/', 'new_50125/' ]
+    old_cells = [ 'old_100125/', 'old_120125/', 'old_50125/', 'old_90125/' ]
 
-    new_dirs = [ 'new_110125/', 'new_130125/', 'new_140125/', 'new_40125/', 'new_50125/' ]
-    old_dirs = [ 'old_100125/', 'old_120125/', 'old_50125/', 'old_90125/' ]
+    # Mac testing environment
+    # new_fdir = '/data/jberwald/rbc/New/frames/'
+    # #    old_fdir = '/data/jberwald/wyss/data/Cells_Jesse/Old/frames/'
+    # new_cells = ['new_140125']
 
     sval = '125'
 
@@ -331,16 +349,16 @@ if __name__ == "__main__":
     #what_to_run = 'chomp'
 
     # set proper directories depending on cells (old? new?)
-    fdir = old_fdir
-    cell_dirs = old_dirs
+    fdir = new_fdir
+    cell_dirs = new_cells
     # run stuff in parallel on all available processors
     if have_pp:
         # create a pool of workers. Default is to use all cpu's
         pool = pp.Server()
         jobs = []
-        depmods = ( 'shutil', 'chomp_betti', 'numpy', 'os' )
+        depmods = ( 'shutil', 'chomp_betti', 'numpy', 'os', 'fft_image' )
         # distribute jobs to the pool of workers
-        for task in [ '2cub', 'chomp' ]:
+        for task in [ 'fft' ]: #'2cub', 'chomp' ]:
             for cell in cell_dirs:
                 cub_files = fdir + cell
                 if task=='threshold':
@@ -349,6 +367,23 @@ if __name__ == "__main__":
                     jobs.append( pool.submit( threshold_all,
                                               args=( cub_files, val ),
                                               modules=depmods ) )
+                elif task=='fft':
+                    # run each cell in parallel, looping over a range
+                    # of values for fourier modes
+                    filters = numpy.linspace( 0, 1, 21 )
+                    for r in filters:
+                        # find the proper boundary file
+                        idx = fdir.find( 'frames' )
+                        bnd_file = fdir[:idx] + 'boundary_Nov_'+cell[:3]+cell[4:]
+                        # just in case
+                        bnd_file = bnd_file.rstrip( '/' )
+                        print "performing low pass filter using r=", str( r )
+                        print "frames", cub_files
+                        print "boundary", bnd_file
+                        jobs.append( pool.submit( fft_filter,
+                                                  args=( cub_files, bnd_file, r ),
+                                                  modules=depmods ) )
+                        print ""
                 elif task=='2cub':
                     print "converting to cubes... "
                     print cub_files
