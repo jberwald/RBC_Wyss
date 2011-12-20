@@ -1,0 +1,67 @@
+Contents of folder:
+
+The main modules are 
+
+    rbc_basic.py:
+
+		. A small collection of functions for extracting
+		frames. The best to start with is load_rbc(). Note
+		that the arg "skiprows" tells the function to read
+		only the rows past <skiprows>. 
+
+		. Eg., using load_rbc() to grab just 4 frames, set
+		skiprows==4995. Then load_rbc() will return rows 4996,
+		4997, 4998, 4999 from the concatenated RBC file that
+		is being read. These can be viewed using the
+		matplotlib function imshow().
+
+    raw_cell.py: 
+
+    		 . Primarily deals with extraction of cell frames from
+    		 concatenated text files.
+		 
+		 . Also, simple functions dealing with the
+		 thresholding of the raw images are available
+		 
+		 . some other important routines include: 
+		   	
+			. thresh2cub(), for converting binary,
+			thresholded matices to cub files.
+
+			. thresh2png(), for outputing images of
+			thresholded frames
+
+   chomp_bettti.py:
+		
+		. Lots of extraction and filtering functions, some of
+		which are imported by raw_cell.py
+		
+		. includes run_chomp() function for accessing chomp as
+		a subprocess (minimal error handling, so sometimes
+		hard to spot immediately if chomp throws an error).
+
+    fft_image.py: 
+
+      		  . similar to raw_cell, except that the frames are
+      		  filtered using a FFT first.
+		  
+		  . ideal_low_pass() takes an optional argument ("r")
+		  indicating the percent of modes to use in the
+		  approximation. When r==0, only the constant mode (DC
+		  component )is kept; r==1 implies keep all (actually
+		  almost all) modes. The "almost" comes from the fact
+		  that in frequency space we take all modes a certain
+		  distance from the center of the space (where the DC
+		  component resides). Therefore, r==1 implies that we
+		  choose all frequencies within a circle of radius
+		  min{ M,N }, where the frequency space is an M x N
+		  matrix. ( M x N is also the dimension of the image
+		  matrix.)
+
+		  . many functions for normalizing images, finding
+		  means, taking FFT's.
+
+		  . Also, the necessary "2cub" functions are in this
+		  module as well. Mostly cut and pasted, but this
+		  works a little better than trying to pass dependent
+		  functions when using parallel python.

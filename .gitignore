@@ -40,3 +40,17 @@ rbc_shared/fft_image.sage
 rbc_shared/new_110125-concatenated-ASCII_2347_r00.cbetti
 
 rbc_shared/parallel_fft_analyzer.py
+
+rbc_shared/figures/fft_mean_H1.png
+
+rbc_shared/figures/fft_mean_H0.png
+
+rbc_shared/figures/old_120125_lowpass.png
+
+rbc_shared/figures/fft_mean_H0_hline.png
+
+rbc_shared/figures/fft_mean_H1_hline.png
+
+rbc_shared/figures/fft_mean_H1_zoom.png
+
+rbc_shared/figures/*

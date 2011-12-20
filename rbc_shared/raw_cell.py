@@ -67,6 +67,16 @@ def load_rbc( fname, skiprows, nx, ny ):
     C = numpy.loadtxt( fname, skiprows=skiprows )    
     cell_frames = [ C[i].reshape(( nx,ny )) for i in range( 5000-skiprows ) ]
     return cell_frames
+
+def make_dir( fdir ):
+    """
+    Try to make directory. 
+    """
+    try:
+        os.makedirs( fdir )
+    except OSError, e:
+        if e.errno != errno.EEXIST:
+            raise
     
 def extract_frames( fname, bnd ):
     """
@@ -90,7 +100,8 @@ def extract_frames( fname, bnd ):
     subfolder = cell_name.partition( '-' )[0]
     savedir = part[0] + '/' + 'frames/' + subfolder +'/'
 
-    print 'savedir', savedir
+    make_dir( savedir )
+    # print 'savedir', savedir
      
     # loop over lines in <fname> and save each as nx x ny array
     #k = 0. 
@@ -169,9 +180,6 @@ def threshold_all( fdir, pct ):
 def thresh2cub( fdir, value ):
     """
     Convert thresholded image matrices to Chomp CUB format.
-    
-    <defunct> Calls bool2cub since thresholded matrices are stored as bools.
-    Changed this since parallel python had trouble passing dependent function bool2cub()
     """
     dlist = os.listdir( fdir )
     thresh = 'thresh'+str(value)
@@ -187,21 +195,7 @@ def thresh2cub( fdir, value ):
         coords = [ str(x)+'\n' for x in z ]
         with open( savename, 'w' ) as fh:
             fh.writelines( coords )
-            #bool2cub( arr, savename )
-        
-def bool2cub( arr, savename ):
-    """
-    Convert a thresholded aray, stored as a boolean, to a
-    Chomp-readable array. Write the new array to disk.
-    """
-    c = arr.astype( 'uint' )
-    w = numpy.where( c==0 )
-    # zip locations of thresholded values to get coords (2D)
-    z = zip( w[0], w[1] )
-    coords = [ str(x)+'\n' for x in z ]
-    with open( savename, 'w' ) as fh:
-        fh.writelines( coords )
-
+ 
 def find_mean( frames ):
     return numpy.mean( [ f.mean() for f in frames] )
 
@@ -315,8 +309,10 @@ if __name__ == "__main__":
     except ImportError:
         print "Could not import pp. Will proceed the serial way..."
 
-    new_fdir = '/data/jberwald/wyss/data/Cells_Jesse/New/frames/'
-    old_fdir = '/data/jberwald/wyss/data/Cells_Jesse/Old/frames/'
+    # new_fdir = '/data/jberwald/wyss/data/Cells_Jesse/New/frames/'
+    # old_fdir = '/data/jberwald/wyss/data/Cells_Jesse/Old/frames/'
+    new_fdir = '/sciclone/home04/jberwald/data10/jberwald/wyss/data/Cells_Jesse/New/frames/'
+    old_fdir = '/sciclone/home04/jberwald/data10/jberwald/wyss/data/Cells_Jesse/Old/frames/'
     new_cells = [ 'new_110125/', 'new_130125/', 'new_140125/', 'new_40125/', 'new_50125/' ]
     old_cells = [ 'old_100125/', 'old_120125/', 'old_50125/', 'old_90125/' ]
 

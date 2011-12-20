@@ -6,6 +6,127 @@ import cPickle as pkl
 import chomp_betti
 import time, shutil
 
+
+
+def run_fft_filter( files, bnd_file, modes, suffix= 'fft_frames/normed_frames/',
+                    make_cubs=True, run_chomp=True ):
+    """
+    For each frame in fdir, compute fft( frame ), then take the top
+    <modes> percent of the frequencies. Threshold these filtered
+    images at the mean (of pixels inside the cell boundary). Save the
+    thresholded image to fft_frames/ directory.
+
+    fdir : directory to frames
+
+    modes : percentage of modes (low->high) to use for low-pass filter
+    """
+    # grab all frames, skip the directories
+    print "files", files
+    if os.path.isdir( files ):
+        fdir = files + '/'
+        dlist = os.listdir( fdir )
+        if os.uname()[0] == 'Linux':
+            frames = []
+            for f in dlist:
+                if f.endswith('npy') and not os.path.isdir( fdir+f ):
+                    frames.append( f )
+        else:
+            frames = [ f for f in dlist if not os.path.isdir( fdir+f ) ]
+    else:
+        frames = [ files ]
+        fdir = files.rpartition( '/' )[0].rpartition( '/' )[0] +'/'
+    if not fdir.endswith( '/' ): fdir += '/'
+    savedir = fdir + suffix
+    # create the directory if necessary
+    make_dir( savedir )
+
+    # compute fft and filtered ifft on (normed) images
+    for frame in frames:
+        if frame.endswith( 'npy' ):
+            savename = frame.rstrip( '.npy' )
+        elif frame.endswith( 'txt' ):
+            savename = frame.rstrip( '.txt' )
+        else:
+            savename = frame
+        fft_data = {}
+        # store the modes
+        fft_data[ 'modes' ] = modes
+        try:
+            image = numpy.loadtxt( fdir+frame )
+        except ValueError:
+            image = numpy.load( fdir+frame )
+        except IOError:
+            raise
+        bnd = numpy.loadtxt( bnd_file )
+        # normalize the images and shift so centered at zero
+        image = normalize_image( image )
+        # FFT
+        X = fft_image( image )
+        # Y = H * X
+        Y = ideal_low_pass( X, r=modes )
+        Yinv = ifft_image( Y ) 
+        Ypow = log1p( numpy.abs( Yinv )**2 ) 
+        # crop the log of the low pass to get rid of the noise outside
+        # of the cell (zero out external points using boundary array)
+        crop_zeros = bnd * Ypow
+        crop_zeros.resize( Ypow.shape )
+        # append the cell with zeros cropped [-4]
+        #Y.append( crop_zeros ) 
+        m = crop_zeros[numpy.where( crop_zeros!=0 )].mean()
+        # everything above the mean, [-3]
+        #Ymean = numpy.ma.masked_less_equal( crop_zeros, m ) 
+        # just the boolean mask, [-2]
+        #Ymask = numpy.ma.masked_less_equal( crop_zeros, m ).mask 
+        # now populate fft_data with the essentials and save to disk
+        #fft_data['fft'] = X
+        #fft_data['lowpass'] = Y
+        #fft_data['ifft'] = Yinv
+        #fft_data['fft_mag'] = Ypow
+        fft_data['ifft_nonzero'] = crop_zeros
+        fft_data['mean'] = m
+        # masking is easy, so no need to save.
+        #fft_data['ifft_mask_mean'] = Ymean
+        #fft_data['ifft_mask'] = Ymask
+
+        # create filename with chomp-readable name (remove the 'dot'
+        # from mode)
+        mode_part = str( modes ).partition( '.' )
+        mode_str = mode_part[0] + mode_part[2]
+        # split files into subdirectories
+        datadir = savedir + 'r'+mode_str
+        save_suffix = savename+'_r'+mode_str
+        make_dir( datadir )
+        dataname = datadir + '/' + savename+'_r'+mode_str+'.pkl'
+
+        # save our thresholded data for later analysis
+        save_fft( fft_data,  dataname )
+
+        # additional work with chomp
+        if make_cubs:
+            fft2cub( dataname, datadir )
+        if run_chomp:
+            if not make_cubs:
+                pass
+            else:
+                cub_name = datadir +'_cub/' + save_suffix + '.cub'
+                cbetti_prefix = datadir + '_cbetti/' + save_suffix
+                betti_prefix = datadir + '_betti/' + save_suffix
+                make_dir( datadir + '_cbetti/' )
+                make_dir( datadir + '_betti/' )
+                chomp_betti.run_chomp( cub_name, cbetti_prefix+'.cbetti' )
+                chomp_betti.extract_betti( cbetti_prefix, betti_prefix )
+
+
+def normalize_image( img ):
+    """
+    Normalize pixel values, then shift to zero-centered values by
+    subtracting the mean.
+    """
+    vmax = img.max()
+    img = img / vmax
+    vmean = img.mean()
+    return img - vmean
+
 def fft_image( img ):
     """
     Perform 2D fft on a cell frame and return the shifted (centered)
@@ -163,13 +284,18 @@ def save_fft( data, fname ):
         # pickl with most efficient protocol available
         pkl.dump( data, fh, protocol=-1 )
 
-def fft2cub( fname ):
+def fft2cub( fname, savedir ):
     """
     Convert thresholded low pass cell image to cubicle file.
     """
-    prefix = fname.rpartition( '/' )[0] + '/'
+    # get the savename
+    prefix = savedir + '_cub/' #fname.rpartition( '/' )[0] + '/r'+mode_str+'_cub/'
+    # make sure dir exists
+    make_dir( prefix )
+    # manipulate fname to get cub file name
     stripname = fname.rpartition( '/' )[-1].rstrip( '.pkl' )
     savename = prefix + stripname + '.cub'
+    # now open the data file
     with open( fname ) as fh:
         fft_data = pkl.load( fh )
     m = fft_data['mean']
@@ -187,101 +313,8 @@ def fft2cub( fname ):
     # now save coords to disk
     with open( savename, 'w' ) as fh:
         fh.writelines( coords )
+    return savename
         
-
-def run_fft_filter( files, bnd_file, modes, make_cubs=True, run_chomp=True ):
-    """
-    For each frame in fdir, compute fft( frame ), then take the top
-    <modes> percent of the frequencies. Threshold these filtered
-    images at the mean (of pixels inside the cell boundary). Save the
-    thresholded image to fft_frames/ directory.
-
-    fdir : directory to frames
-
-    modes : percentage of modes (low->high) to use for low-pass filter
-    """
-    # grab all frames, skip the directories
-    if os.path.isdir( files ):
-        fdir = files + '/'
-        dlist = os.listdir( fdir )
-        if os.uname()[0] == 'Linux':
-            frames = []
-            for f in dlist:
-                if f.endswith('npy') and not os.path.isdir( fdir+f ):
-                    frames.append( f )
-        else:
-            frames = [ f for f in dlist if not os.path.isdir( fdir+f ) ]
-    else:
-        frames = [ files ]
-        fdir = files.rpartition( '/' )[0].rpartition( '/' )[0] +'/'
-    if not fdir.endswith( '/' ): fdir += '/'
-    savedir = fdir + 'fft_frames/'
-    # create the directory if necessary
-    make_dir( savedir )
-    
-    for frame in frames:
-        if frame.endswith( 'npy' ):
-            savename = frame.rstrip( '.npy' )
-        elif frame.endswith( 'txt' ):
-            savename = frame.rstrip( '.txt' )
-        else:
-            savename = frame
-        fft_data = {}
-        # store the modes
-        fft_data[ 'modes' ] = modes
-        try:
-            image = numpy.loadtxt( fdir+frame )
-        except ValueError:
-            image = numpy.load( fdir+frame )
-        except IOError:
-            raise
-        bnd = numpy.loadtxt( bnd_file )
-        X = fft_image( image )        
-        Y = ideal_low_pass( X, r=modes )
-        Yinv = ifft_image( Y ) 
-        Ypow = log1p( numpy.abs( Yinv )**2 ) 
-        # crop the log of the low pass to get rid of the noise outside
-        # of the cell (zero out external points using boundary array)
-        crop_zeros = bnd * Ypow
-        crop_zeros.resize( Ypow.shape )
-        # append the cell with zeros cropped [-4]
-        #Y.append( crop_zeros ) 
-        m = crop_zeros[numpy.where( crop_zeros!=0 )].mean()
-        # everything above the mean, [-3]
-        #Ymean = numpy.ma.masked_less_equal( crop_zeros, m ) 
-        # just the boolean mask, [-2]
-        #Ymask = numpy.ma.masked_less_equal( crop_zeros, m ).mask 
-        # now populate fft_data with the essentials and save to disk
-        #fft_data['fft'] = X
-        #fft_data['lowpass'] = Y
-        #fft_data['ifft'] = Yinv
-        #fft_data['fft_mag'] = Ypow
-        fft_data['ifft_nonzero'] = crop_zeros
-        fft_data['mean'] = m
-        # masking is easy, so no need to save.
-        #fft_data['ifft_mask_mean'] = Ymean
-        #fft_data['ifft_mask'] = Ymask
-
-        # create filename with chomp-readable name (remove the 'dot'
-        # from mode)
-        mode_part = str( modes ).partition( '.' )
-        mode_str = mode_part[0] + mode_part[2]
-        dataname = savedir+savename+'_r'+mode_str+'.pkl'
-        save_fft( fft_data,  dataname )
-
-        # additional work
-        if make_cubs:
-            fft2cub( dataname )
-        if run_chomp:
-            if not make_cubs:
-                pass
-            else:
-                cub_name = dataname.rstrip( '.pkl') + '.cub'
-                save_prefix = cub_name.rstrip( '.cub' )
-                #save_name = save_prefix + 'cbetti' 
-                chomp_betti.run_chomp( cub_name, save_prefix+'.cbetti' )
-                chomp_betti.extract_betti( save_prefix )
-
 def concatenate_fft_modes( cell_dir, modes ):
     """
     Return a list of all <cell_name>_rNNN.betti files in cell_dir.
@@ -484,13 +517,20 @@ def plot_fft_means( data, **args ): #dim=, fig=None, leg=False ):
     from matplotlib.offsetbox import TextArea, DrawingArea, OffsetImage, \
         AnnotationBbox
     from matplotlib._png import read_png
+    from matplotlib import rcParams
     
     fargs = { 'dim' : 0,
               'fig' : None,
               'leg' : False,
-              'zoom' : -1
+              'zoom' : -1,
+              'fontsize' : 14,
+              'legendsize' : 'medium'
               }
     fargs.update( args )
+
+    # reset some params 
+    rcParams['font.size'] = fargs['fontsize']
+    rcParams['legend.fontsize'] = fargs['legendsize']
     if fargs['fig'] is None:
         fig = figure( frameon=False)
     else:
@@ -498,17 +538,27 @@ def plot_fft_means( data, **args ): #dim=, fig=None, leg=False ):
         #ax = fig.gca()
     ax = fig.add_subplot(111)#, frameon=False, xticks=[], yticks=[])
 
+    legend_new = False
+    legend_old = False
     for cell in data:
         datum = data[ cell ]
         if 'new' in cell:
-            color = 'r'
+            # makes a legend corresponding to all the new data curves
+            if not legend_new:
+                ax.plot( datum[0][:fargs['zoom']], datum[1][:fargs['zoom']], '-o', c='r', lw=2, ms=3, label='New cells' )
+                legend_new = True
+            else:
+                ax.plot( datum[0][:fargs['zoom']], datum[1][:fargs['zoom']], '-o', c='r', lw=2, ms=3 )
         else:
-            color = 'b'
-        
-        ax.plot( datum[0][:fargs['zoom']], datum[1][:fargs['zoom']], '-o', c=color, lw=2, ms=3, label=cell )
-    ax.hlines( 1, 0, datum[0][fargs['zoom']], linestyle='dashed', linewidth=2, alpha=0.7 )
-    # ax.set_xlabel( r'Percent of Fourier modes ($\times 100$)' )
-    # ax.set_ylabel( r'Mean number of generators for $H_{'+str(fargs['dim'])+'}$' )
+            # makes a legend corresponding to all the old data curves
+            if not legend_old:
+                ax.plot( datum[0][:fargs['zoom']], datum[1][:fargs['zoom']], '-o', c='b', lw=2, ms=3, label='Old cells' )
+                legend_old = True
+            else:
+                ax.plot( datum[0][:fargs['zoom']], datum[1][:fargs['zoom']], '-o', c='b', lw=2, ms=3 )
+    ax.hlines( 1, 0, datum[0][fargs['zoom']], linestyle='dashed', linewidth=2, alpha=0.7,  )
+    ax.set_xlabel( r'Percent of Fourier modes ($\times 100$)' )
+    ax.set_ylabel( r'Mean number of generators for $H_{'+str(fargs['dim'])+'}$' )
     if fargs['leg']:
         ax.legend( loc='upper left' )
 
@@ -534,12 +584,35 @@ def plot_fft_means( data, **args ): #dim=, fig=None, leg=False ):
 
     return fig
 
-    
+def run_filters( cell_path ):
+    print "frames", cell_path
+    filters = numpy.linspace( 0.25, 1, 16 )
+    for r in filters:
+        # find the proper boundary file
+        idx = cell_path.find( 'frames' )
+        cell = cell_path.rstrip('/').rpartition( '/' )[-1]
+        bnd_file = cell_path[:idx] + 'boundary_Nov_'+cell[:3]+cell[4:]
+        # just in case
+        bnd_file = bnd_file.rstrip( '/' )
+        run_fft_filter( cell_path, bnd_file, r )
     
 
 if __name__ == "__main__":
 
-    analyze_all()
+    import sys
+
+    #new_fdir = '/data/jberwald/rbc/New/frames/'
+    new_fdir = '/sciclone/home04/jberwald/data10/wyss/data/Cells_Jesse/New/frames/'
+    old_fdir = '/sciclone/home04/jberwald/data10/wyss/data/Cells_Jesse/Old/frames/'
+    new_cells = [ 'new_110125/', 'new_130125/', 'new_140125/', 'new_40125/', 'new_50125/' ]
+    old_cells = [ 'old_100125/', 'old_120125/', 'old_50125/', 'old_90125/' ]
+
+    arg = int( sys.argv[1] )
+    path = new_fdir + new_cells[ arg ]
+    run_filters( path )
+
+
+    #   analyze_all()
     #    concat_means()
 
     # sage_session = False
@@ -641,3 +714,4 @@ if __name__ == "__main__":
     # # imshow( log1p( np.abs( Yinv )**2 ) )
     
     # # fig.show()
+

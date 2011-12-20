@@ -2,7 +2,11 @@ import subprocess, os
 import matplotlib.pyplot as plt
 import matplotlib.mlab as mlab
 import numpy# as np
-import pp
+try:
+    import pp
+except ImportError:
+    print "No parallel python install"
+    print "We'll try to continue..."
 import time
 from collections import deque
 from scipy.stats import linregress
@@ -146,7 +150,7 @@ def stack_images( path, num_frames=50 ):
         frames[i] = numpy.hstack( (x, tmp) )
     return numpy.vstack( frames )
                     
-def extract_betti( fname ):
+def extract_betti( fname, betti_file ):
     """
     Read the betti numbers from the file containing the output from chomp.
     
@@ -157,15 +161,20 @@ def extract_betti( fname ):
     with open( fname + '.cbetti', 'r' ) as fh:
         lines = fh.readlines()
     # grab the line with the Betti numbers
-    for line in lines:
-        if line.startswith( 'Betti' ):
-            # keep only the numbers
-            betti_numbers = line.strip().split()[2:] 
-
+    if len( lines ) > 1:
+        for line in lines:
+            if line.startswith( 'Betti' ):
+                # keep only the numbers
+                betti_numbers = line.strip().split()[2:]
+    # chomp output single line of betti number (the "other" chomp
+    # version...)
+    else:
+        betti_numbers = lines[0].strip().split()
     max_dim = len( betti_numbers )
-    # open new
-    with open( fname + '.betti', 'w' ) as fh:
-        for i in range( max_dim ):
+    # open betti file and save generators. write the same format for
+    # both chomp outputs to keep things consistent
+    with open( betti_file + '.betti', 'w' ) as fh:
+        for i, b in enumerate( betti_numbers ):
             line = str(i) + ' ' + betti_numbers[i] +'\n'
             fh.write( line )
 
